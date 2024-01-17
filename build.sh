@@ -1,90 +1,79 @@
 #!/bin/bash
 
-#set -e
+SECONDS=0 # builtin bash timer
+ZIPNAME="Intense-KSU-$(TZ=Asia/Jakarta date +"%Y%m%d-%H%M").zip"
+TC_DIR="$HOME/tc/r498229b"
+GCC_64_DIR="$HOME/tc/aarch64-linux-android-4.9"
+GCC_32_DIR="$HOME/tc/arm-linux-androideabi-4.9"
+AK3_DIR="$HOME/android/AnyKernel3"
+DEFCONFIG="X00TD_defconfig"
 
-## Copy this script inside the kernel directory
-KERNEL_DEFCONFIG=X00TD_defconfig
-ANYKERNEL3_DIR=$PWD/AnyKernel3/
-FINAL_KERNEL_ZIP=Zeus-X00T-$(date '+%Y%m%d').zip
-export PATH="$HOME/trb_clang/bin:$PATH"
-export ARCH=arm64
-export SUBARCH=arm64
-export KBUILD_COMPILER_STRING="$($HOME/trb_clang/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
+export PATH="$TC_DIR/bin:$PATH"
+export KBUILD_BUILD_USER="vermouth"
+export KBUILD_BUILD_HOST="reductize"
+export KBUILD_BUILD_VERSION="1"
 
-if ! [ -d "$HOME/trb_clang" ]; then
-echo "trb_clang not found! Cloning..."
-if ! git clone https://gitlab.com/varunhardgamer/trb_clang --depth=1 --single-branch ~/trb_clang; then
+if ! [ -d "${TC_DIR}" ]; then
+echo "Clang not found! Cloning to ${TC_DIR}..."
+if ! git clone --depth=1 https://gitlab.com/vermouth/android_prebuilts_clang_host_linux-x86_clang-r498229b.git ${TC_DIR}; then
 echo "Cloning failed! Aborting..."
 exit 1
 fi
 fi
 
-# Speed up build process
-MAKE="./makeparallel"
+if ! [ -d "${GCC_64_DIR}" ]; then
+echo "gcc not found! Cloning to ${GCC_64_DIR}..."
+if ! git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git ${GCC_64_DIR}; then
+echo "Cloning failed! Aborting..."
+exit 1
+fi
+fi
 
-BUILD_START=$(date +"%s")
-blue='\033[0;34m'
-cyan='\033[0;36m'
-yellow='\033[0;33m'
-red='\033[0;31m'
-nocol='\033[0m'
+if ! [ -d "${GCC_32_DIR}" ]; then
+echo "gcc_32 not found! Cloning to ${GCC_32_DIR}..."
+if ! git clone --depth=1 -b lineage-19.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git ${GCC_32_DIR}; then
+echo "Cloning failed! Aborting..."
+exit 1
+fi
+fi
 
-# Clean build always lol
-echo "**** Cleaning ****"
-rm -rf Zeus*.zip
+if [[ $1 = "-r" || $1 = "--regen" ]]; then
+make O=out ARCH=arm64 $DEFCONFIG savedefconfig
+cp out/defconfig arch/arm64/configs/$DEFCONFIG
+exit
+fi
+
+if [[ $1 = "-c" || $1 = "--clean" ]]; then
+rm -rf out
+fi
+
 mkdir -p out
-make O=out clean
+make O=out ARCH=arm64 $DEFCONFIG
 
-echo "**** Kernel defconfig is set to $KERNEL_DEFCONFIG ****"
-echo -e "$blue***********************************************"
-echo "          BUILDING KERNEL          "
-echo -e "***********************************************$nocol"
-make $KERNEL_DEFCONFIG O=out
-make -j$(nproc --all) O=out LLVM=1\
-		ARCH=arm64 \
-		AS="$HOME/trb_clang/bin/llvm-as" \
-		CC="$HOME/trb_clang/bin/clang" \
-		LD="$HOME/trb_clang/bin/ld.lld" \
-		AR="$HOME/trb_clang/bin/llvm-ar" \
-		NM="$HOME/trb_clang/bin/llvm-nm" \
-		STRIP="$HOME/trb_clang/bin/llvm-strip" \
-		OBJCOPY="$HOME/trb_clang/bin/llvm-objcopy" \
-		OBJDUMP="$HOME/trb_clang/bin/llvm-objdump" \
-		CLANG_TRIPLE=aarch64-linux-gnu- \
-		CROSS_COMPILE="$HOME/trb_clang/bin/clang" \
-                CROSS_COMPILE_COMPAT="$HOME/trb_clang/bin/clang" \
-                CROSS_COMPILE_ARM32="$HOME/trb_clang/bin/clang"
+echo -e "\nStarting compilation...\n"
+make -j$(nproc --all) O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar AS=llvm-as NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip CROSS_COMPILE=$GCC_64_DIR/bin/aarch64-linux-android- CROSS_COMPILE_ARM32=$GCC_32_DIR/bin/arm-linux-androideabi- CLANG_TRIPLE=aarch64-linux-gnu- Image.gz-dtb >> log.txt
 
-echo "**** Kernel Compilation Completed ****"
-echo "**** Verify Image.gz-dtb ****"
-ls $PWD/out/arch/arm64/boot/Image.gz-dtb
-
-# Anykernel 3 time!!
-echo "**** Verifying AnyKernel3 Directory ****"
-ls $ANYKERNEL3_DIR
-echo "**** Removing leftovers ****"
-rm -rf $ANYKERNEL3_DIR/Image.gz-dtb
-rm -rf $ANYKERNEL3_DIR/$FINAL_KERNEL_ZIP
-
-echo "**** Copying Image.gz-dtb ****"
-cp $PWD/out/arch/arm64/boot/Image.gz-dtb $ANYKERNEL3_DIR/
-
-echo "**** Time to zip up! ****"
-cd $ANYKERNEL3_DIR/
-zip -r9 "../$FINAL_KERNEL_ZIP" * -x README $FINAL_KERNEL_ZIP
-
-echo "**** Done, here is your sha1 ****"
+if [ -f "out/arch/arm64/boot/Image.gz-dtb" ]; then
+echo -e "\nKernel compiled succesfully! Zipping up...\n"
+if [ -d "$AK3_DIR" ]; then
+cp -r $AK3_DIR AnyKernel3
+elif ! git clone -q https://github.com/Whot1966/AnyKernel3.git -b X00TD/SkyWalker-KSU; then
+echo -e "\nAnyKernel3 repo not found locally and cloning failed! Aborting..."
+exit 1
+fi
+cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3
+rm -f *zip
+cd AnyKernel3
+git checkout master &> /dev/null
+zip -r9 "../$ZIPNAME" * -x '*.git*' README.md *placeholder
 cd ..
-rm -rf $ANYKERNEL3_DIR/$FINAL_KERNEL_ZIP
-rm -rf $ANYKERNEL3_DIR/Image.gz-dtb
-rm -rf out/
-
-sha1sum $FINAL_KERNEL_ZIP
-
-BUILD_END=$(date +"%s")
-DIFF=$(($BUILD_END - $BUILD_START))
-echo -e "$yellow Build completed in $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds.$nocol"
-
-echo "**** Uploading your zip now ****"
-		curl -sL https://git.io/file-transfer | sh
-                ./transfer wet $FINAL_KERNEL_ZIP
+rm -rf AnyKernel3
+rm -rf out/arch/arm64/boot
+echo -e "\nCompleted in $((SECONDS / 60)) minute(s) and $((SECONDS % 60)) second(s) !"
+echo "Zip: $ZIPNAME"
+echo "----------------------------------"
+curl -T $ZIPNAME https://free.keep.sh
+else
+echo -e "\nCompilation failed!"
+exit 1
+fi
