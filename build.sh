@@ -2,7 +2,7 @@
 
 SECONDS=0 # builtin bash timer
 ZIPNAME="Intense-KSU-$(TZ=Asia/Jakarta date +"%Y%m%d-%H%M").zip"
-TC_DIR="$HOME/tc/r498229b"
+TC_DIR="$HOME/tc/r510928"
 GCC_64_DIR="$HOME/tc/aarch64-linux-android-4.9"
 GCC_32_DIR="$HOME/tc/arm-linux-androideabi-4.9"
 AK3_DIR="$HOME/android/AnyKernel3"
@@ -15,7 +15,7 @@ export KBUILD_BUILD_VERSION="1"
 
 if ! [ -d "${TC_DIR}" ]; then
 echo "Clang not found! Cloning to ${TC_DIR}..."
-if ! git clone --depth=1 https://gitlab.com/vermouth/android_prebuilts_clang_host_linux-x86_clang-r498229b.git ${TC_DIR}; then
+if ! git clone --depth=1 https://gitlab.com/vermouth/android_prebuilts_clang_host_linux-x86_clang-r510928.git ${TC_DIR}; then
 echo "Cloning failed! Aborting..."
 exit 1
 fi
